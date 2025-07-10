@@ -22,7 +22,8 @@ function parseArgs() {
     samples: DEFAULT_N_SAMPLES,
     problem: null,
     temperature: 0.7,
-    help: false
+    help: false,
+    verbose: false
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -33,6 +34,10 @@ function parseArgs() {
       case '-h':
       case '--help':
         config.help = true;
+        break;
+      case '-v':
+      case '--verbose':
+        config.verbose = true;
         break;
       case '-m':
       case '--model':
@@ -121,6 +126,7 @@ ARGUMENTS:
 
 OPTIONS:
     -h, --help                Show this help message
+    -v, --verbose             Show detailed output including intermediate steps
     -m, --model MODEL         AI model to use (default: ${DEFAULT_MODEL})
     -p, --problem PROBLEM     Problem statement (alternative to positional argument)
     -f, --primer-file FILE    Path to primer YAML file (default: ${DEFAULT_PRIMER_YAML})
@@ -219,7 +225,9 @@ async function spinOnce(primerPool, targetProblem) {
     },
   ], 0.8);
 
-  // console.log("ideas:", ideas);
+  if (config.verbose) {
+    console.log("🐛 Generated ideas:", ideas);
+  }
 
   /* 3️⃣ rank them for relevance + plausibility, return JSON */
   console.log("📊 Ranking and evaluating ideas...");
@@ -254,24 +262,56 @@ async function spinOnce(primerPool, targetProblem) {
       ideasArray = parsed.ideas;
     } else if (parsed.results && Array.isArray(parsed.results)) {
       ideasArray = parsed.results;
+    } else if (parsed.result && Array.isArray(parsed.result)) {
+      ideasArray = parsed.result;
     } else {
       // If it's a single object with idea properties, wrap it in an array
       ideasArray = [parsed];
     }
     
-    // Sort ideas by (relevance + plausibility) descending, then take top 3
-    const ranked = ideasArray
-      .sort((a, b) => (b.relevance + b.plausibility) - (a.relevance + a.plausibility))
-      .slice(0, 3)
-      .map(item => item.idea + "Score: " + (item.relevance + item.plausibility)); // Append score for clarity
-    best = ranked;
+    // Filter out items that don't have the required properties
+    const validIdeas = ideasArray.filter(item => 
+      item && 
+      typeof item.idea === 'string' && 
+      typeof item.relevance === 'number' && 
+      typeof item.plausibility === 'number' &&
+      !isNaN(item.relevance) &&
+      !isNaN(item.plausibility)
+    );
+    
+    if (validIdeas.length === 0) {
+      best = ["No valid ideas found in response. Raw output: " + rankingJSON];
+    } else {
+      // Sort ideas by (relevance + plausibility) descending, then take top 3
+      const ranked = validIdeas
+        .sort((a, b) => (b.relevance + b.plausibility) - (a.relevance + a.plausibility))
+        .slice(0, 3)
+        .map(item => {
+          const score = item.relevance + item.plausibility;
+          const reasoning = item.reasoning ? ` (${item.reasoning})` : '';
+          return `${item.idea} [Score: ${score}/20]${reasoning}`;
+        });
+      best = ranked;
+    }
   } catch (error) {
-    best = "(failed to parse ranking JSON), output was " + rankingJSON;
+    best = [`Failed to parse ranking JSON: ${error.message}. Raw output: ${rankingJSON}`];
+  }
+
+  if (config.verbose) {
+    console.log("🐛 Raw ranking JSON:", rankingJSON);
+    console.log("🐛 Mechanistic observation:", question);
   }
 
   /* 4️⃣ publish (here we just log) */
-  // console.log("\n� Mechanistic observation:", question);
-  console.log("💡 Best ideas:", best);
+  console.log("\n💡 Best ideas:");
+  if (Array.isArray(best)) {
+    best.forEach((idea, index) => {
+      console.log(`\n${index + 1}. ${idea}`);
+    });
+  } else {
+    console.log(best);
+  }
+  console.log("\n");
 }
 
 async function main() {
