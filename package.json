@@ -1,4 +1,11 @@
 {
+  "name": "idea-mill",
+  "version": "1.0.0",
+  "description": "Generate innovative solutions by combining different mechanisms",
+  "main": "idea-mill.js",
+  "bin": {
+    "idea-mill": "./idea-mill.js"
+  },
   "dependencies": {
     "openai": "^4.95.1",
     "yaml": "^2.7.1"
